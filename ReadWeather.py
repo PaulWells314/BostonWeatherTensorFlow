@@ -1,35 +1,40 @@
 import requests
 import pandas as pd
-from dateutil import parser, rrule
-from datetime import datetime, time, date
+from   dateutil import parser, rrule
+from   datetime import datetime, time, date
 import time
-from matplotlib import pyplot as plt
+from   matplotlib import pyplot as plt
 import numpy as np
 import tensorflow as tf
 
+city_url = {
+
+"Weston"  : "https://www.wunderground.com/history/airport/KBED/%s/%s/%s/DailyHistory.html?req_city=Weston&req_state=MA&req_statename=Massachusetts&reqdb.zip=02493&reqdb.magic=1&reqdb.wmo=99999",
+"Chicago" : "https://www.wunderground.com/history/airport/KORD/%s/%s/%s/DailyHistory.html?req_city=Chicago&req_statename=Illinois",
+"NewYork" : "https://www.wunderground.com/history/airport/KNYC/%s/%s/%s/DailyHistory.html?req_city=New+York&req_state=NY&req_statename=New+York&reqdb.zip=10001&reqdb.magic=8&reqdb.wmo=99999"
+}
+
 def get_weather(year, month, day):
-    url = "https://www.wunderground.com/history/airport/KBED/%s/%s/%s/DailyHistory.html?req_city=Weston&req_state=MA&req_statename=Massachusetts&reqdb.zip=02493&reqdb.magic=1&reqdb.wmo=99999"%(year,month,day)
-    url2 = "https://www.wunderground.com/history/airport/KORD/%s/%s/%s/DailyHistory.html?req_city=Chicago&req_statename=Illinois"%(year,month,day)
-    url3 = "https://www.wunderground.com/history/airport/KNYC/%s/%s/%s/DailyHistory.html?req_city=New+York&req_state=NY&req_statename=New+York&reqdb.zip=10001&reqdb.magic=8&reqdb.wmo=99999"%(year,month,day)
+   
+    url_list = []
+    url_list.append(city_url["Weston"]%(year,month,day))
+    url_list.append(city_url["Chicago"]%(year,month,day))
+    url_list.append(city_url["NewYork"]%(year,month,day))
     
-    tables = pd.read_html(requests.get(url,
-                               headers={'User-agent': 'Mozilla/5.0'}).text)
-    dataframe = tables[0]
+    weather_data_list = []
     
-    tables2 = pd.read_html(requests.get(url2,
-                               headers={'User-agent': 'Mozilla/5.0'}).text)
-    dataframe2 = tables2[0]
-    
-    tables3 = pd.read_html(requests.get(url3,
-                               headers={'User-agent': 'Mozilla/5.0'}).text)
-    dataframe3 = tables3[0]
-    return (dataframe.iloc[1,1], dataframe2.iloc[1,1], dataframe3.iloc[1,1])
+    for url in url_list:
+        tables = pd.read_html(requests.get(url, headers={'User-agent': 'Mozilla/5.0'}).text)
+        dataframe = tables[0]
+        weather_data_list.append(dataframe.iloc[1,1])
+        
+    return weather_data_list
     
 # Model architecture parameters
-n_weather = 4
+n_weather   = 4
 n_neurons_1 = 8
 n_neurons_2 = 2
-n_target = 1
+n_target    = 1
 
 # Placeholder
 X = tf.placeholder(dtype=tf.float32, shape=[None, n_weather])
@@ -66,36 +71,31 @@ mse = tf.reduce_mean(tf.squared_difference(out, Y))
 # Optimizer
 opt = tf.train.AdamOptimizer().minimize(mse) 
 
-temps = []
-temps2 = []
-temps3 = []
 start_date = "2013/1/1"
-end_date = "2018/5/22"
+end_date   = "2013/3/1"
 start = parser.parse(start_date)
 end = parser.parse(end_date)
 dates = list(rrule.rrule(rrule.DAILY, dtstart=start, until=end))    
-#print(dates)
+
+temps     = [ [], [], [] ]
+tlist     = [ [], [], [] ]
 
 for date in dates:
-    (temperature, temperature2, temperature3) =get_weather(date.year, date.month, date.day)
-    print(temperature, temperature2)
-    temps.append(float(temperature.split()[0])/100.0)
-    temps2.append(float(temperature2.split()[0])/100.0)
-    temps3.append(float(temperature3.split()[0])/100.0)
-    
-print(temps)
-print(temps2)
-print(temps3)
-
-t = np.array(temps)
-t2 = np.array(temps2)
-t3 = np.array(temps3)
-plt.plot(t)
-plt.plot(t2)
-plt.plot(t3)
+    weather_data_list =get_weather(date.year, date.month, date.day)
+  
+    for counter, temperature in enumerate(weather_data_list): 
+        print(date, temperature)
+        temps[counter].append(float(temperature.split()[0])/100.0)    
+    print("")
+  
+for counter, temp in enumerate(temps):
+    print(temp)
+    tlist[counter] = np.array(temp)
+    plt.plot(tlist[counter])
+  
 plt.show()
 
-day_num = np.arange(len(temps))
+day_num = np.arange(len(temps[0]))
 day_num = (np.modf(day_num/365.25))[0]
 
 # Make Session
@@ -107,8 +107,9 @@ net.run(tf.global_variables_initializer())
 epochs = 10000
 batch_size = 32
 
-y_train = t[8::1].copy()
-X_train =np.column_stack( (t[:len(y_train)], t2[:len(y_train)], t3[:len(y_train)],  day_num[:len(y_train)] ) )
+y_train = tlist[0][8::1].copy()
+
+X_train =np.column_stack( (tlist[0][:len(y_train)], tlist[1][:len(y_train)], tlist[2][:len(y_train)],  day_num[:len(y_train)] ) )
 
 for e in range(epochs):
     # Minibatch training
