@@ -77,8 +77,11 @@ start = parser.parse(start_date)
 end = parser.parse(end_date)
 dates = list(rrule.rrule(rrule.DAILY, dtstart=start, until=end))    
 
-temps     = [ [], [], [] ]
-tlist     = [ [], [], [] ]
+temps = []
+tlist = []
+for i in range(n_weather-1):
+    temps.append([])
+    tlist.append([])   
 
 for date in dates:
     weather_data_list =get_weather(date.year, date.month, date.day)
@@ -109,7 +112,9 @@ batch_size = 32
 
 y_train = tlist[0][8::1].copy()
 
-X_train =np.column_stack( (tlist[0][:len(y_train)], tlist[1][:len(y_train)], tlist[2][:len(y_train)],  day_num[:len(y_train)] ) )
+X_train =np.column_stack( [t[:len(y_train)] for t in tlist ] )
+
+X_train =np.column_stack( (X_train,  day_num[:len(y_train)]) ) 
 
 for e in range(epochs):
     # Minibatch training
