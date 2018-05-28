@@ -6,6 +6,8 @@ import time
 from   matplotlib import pyplot as plt
 import numpy as np
 import tensorflow as tf
+import os
+import sys
 
 city_url = {
 
@@ -30,14 +32,17 @@ def get_weather(year, month, day):
         
     return weather_data_list
     
+    
+    
 # Model architecture parameters
-n_weather   = 4
-n_neurons_1 = 8
-n_neurons_2 = 2
-n_target    = 1
+n_weather     = 4
+n_filter_days = 6
+n_neurons_1   = 8
+n_neurons_2   = 2
+n_target      = 1
 
 # Placeholder
-X = tf.placeholder(dtype=tf.float32, shape=[None, n_weather])
+X = tf.placeholder(dtype=tf.float32, shape=[None, n_filter_days* (n_weather-1) +1])
 Y = tf.placeholder(dtype=tf.float32, shape=[None])
 
 # Initializers
@@ -46,7 +51,7 @@ weight_initializer = tf.variance_scaling_initializer(mode="fan_avg", distributio
 bias_initializer = tf.zeros_initializer() 
 
 # Layer 1: Variables for hidden weights and biases
-W_hidden_1 = tf.Variable(weight_initializer([n_weather, n_neurons_1]))
+W_hidden_1 = tf.Variable(weight_initializer([n_filter_days* (n_weather-1) +1, n_neurons_1]))
 bias_hidden_1 = tf.Variable(bias_initializer([n_neurons_1]))
 
 # Layer 2: Variables for hidden weights and biases
@@ -72,25 +77,40 @@ mse = tf.reduce_mean(tf.squared_difference(out, Y))
 opt = tf.train.AdamOptimizer().minimize(mse) 
 
 start_date = "2013/1/1"
-end_date   = "2013/3/1"
+end_date   = "2018/5/28"
 start = parser.parse(start_date)
 end = parser.parse(end_date)
 dates = list(rrule.rrule(rrule.DAILY, dtstart=start, until=end))    
 
 temps = []
 tlist = []
+
 for i in range(n_weather-1):
     temps.append([])
     tlist.append([])   
 
-for date in dates:
-    weather_data_list =get_weather(date.year, date.month, date.day)
-  
-    for counter, temperature in enumerate(weather_data_list): 
-        print(date, temperature)
-        temps[counter].append(float(temperature.split()[0])/100.0)    
-    print("")
-  
+# read data from website and store
+if sys.argv[1] == "w":
+    with open('weather.txt', mode = 'w') as f:
+
+        for date in dates:
+            weather_data_list =get_weather(date.year, date.month, date.day)
+            for counter, temperature in enumerate(weather_data_list): 
+                print(date, temperature)
+                f.write("%s "%temperature.split()[0]) 
+                temps[counter].append(float(temperature.split()[0])/100.0)
+            f.write(os.linesep)   
+            print("")
+ 
+# read data from file
+else:
+    with open('weather.txt', mode = 'r') as f:
+        for line in f:
+            if len(line.split()) >=3:
+                temps[0].append(float(line.split()[0])/100.0)
+                temps[1].append(float(line.split()[1])/100.0)
+                temps[2].append(float(line.split()[2])/100.0)
+            
 for counter, temp in enumerate(temps):
     print(temp)
     tlist[counter] = np.array(temp)
@@ -108,12 +128,15 @@ net.run(tf.global_variables_initializer())
 
 # Number of epochs and batch size
 epochs = 10000
-batch_size = 32
+batch_size = 128
 
-y_train = tlist[0][8::1].copy()
+y_train = tlist[0][n_filter_days::1].copy()
 
-X_train =np.column_stack( [t[:len(y_train)] for t in tlist ] )
-
+X_train =np.column_stack( [t[0:len(y_train)] for t in tlist ] )
+for t in tlist:
+    for i in range(n_filter_days-1):
+        X_train =np.column_stack( (X_train, t[i+1:len(y_train)+i+1]) )
+    
 X_train =np.column_stack( (X_train,  day_num[:len(y_train)]) ) 
 
 for e in range(epochs):
